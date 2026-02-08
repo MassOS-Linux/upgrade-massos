@@ -32,12 +32,12 @@ and onwards. If so, you can simply invoke it by running one of the following
 commands:
 ```sh
 # To check online for a new update and install it if available:
-sudo massos-upgrade
+sudo upgrade-massos
 ```
 
 ```sh
 # To install an update offline, from a local rootfs image:
-sudo massos-upgrade <rootfs-file>.tar.zst
+sudo upgrade-massos <rootfs-file>.tar.zst
 ```
 
 If your system does **NOT** have `upgrade-massos` pre-installed, due to being
@@ -52,12 +52,12 @@ cd upgrade-massos
 And then run the utility as follows:
 ```sh
 # To check online for a new update and install it if available:
-sudo ./massos-upgrade
+sudo ./upgrade-massos
 ```
 
 ```sh
 # To install an update offline, from a local rootfs image:
-sudo ./massos-upgrade <rootfs-file>.tar.zst
+sudo ./upgrade-massos <rootfs-file>.tar.zst
 ```
 
 If a new update was found (online), or your local rootfs image is valid
