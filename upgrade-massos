@@ -239,13 +239,13 @@ msg "Running pre-upgrade script..."
 . "$WORKDIR"/preupgrade_ng
 # Pre-install new systemd-sysusers files - required for permissions.
 msg "Pre-installing new systemd-sysusers configuration files..."
-cp -af "$WORKDIR"/newroot/usr/lib/sysusers.d "$WORKDIR"/newroot/usr/lib
+cp -af "$WORKDIR"/newroot/usr/lib/sysusers.d /usr/lib
 systemd-sysusers
 # Install new directory structure (before installing files).
 msg "Installing new directory structure..."
 while read -r d; do
   # Do nothing if the directory already exists on the host.
-  if test -d "$d"; then
+  if test -d "$d" && test ! -L "$f"; then
     continue
   fi
   # If the directory is a file, warn about it but continue.
@@ -262,7 +262,7 @@ done < <(find "$WORKDIR"/newroot -mindepth 1 -type d | sed "s|^$WORKDIR/newroot|
 # Deal with file conflicts - if a new file or link would overwrite a directory.
 msg "Checking for and mitigating file conflicts..."
 while read -r f; do
-  if test -d "$f"; then
+  if test -d "$f" && test ! -L "$f"; then
     not "Overwriting directory $f with a file or symlink."
     rm -rf "$f"
   fi
@@ -311,7 +311,7 @@ msg "Cleaning up stale directories..."
 while read -r d; do
   # Only clean up the directory if it is not empty.
   rmdir "$d" 2>/dev/null || true
-done
+done < <(grep '^d:' "$WORKDIR"/stale | sed 's/^d://' | sort)
 # Run post-upgrade script.
 msg "Running post-upgrade script..."
 sync; . "$WORKDIR"/postupgrade_ng
