@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+
+# upgrade-massos - Modern system upgrade utility for MassOS.
+# Copyright (C) 2025 Daniel Massey - Licensed under GNU GPLv3+.
+# See the 'LICENSE' file, or '/usr/share/massos/LICENSE' on a MassOS system.
+
+# Invocation, binary location, version and copyright year.
+INV="$(basename "$0")"
+HERE="$(readlink -f "$(dirname "$0")")"
+
+# Temporary working directory.
+WORKDIR="$(mktemp -d /var/tmp/upgrade-massos.tmp.XXXXXX)"
+
+# We may be capturing the output of some programs.
+# So override the default locale for consistency.
+export LANG="C.UTF-8" LANGUAGE="C.UTF-8" LC_ALL="C.UTF-8"
+
+# Message and exit-on-error functions.
+msg() {
+  echo -e "\e[1;33m$*\e[0m"
+}
+not() {
+  echo -e "\e[1;35mNOTE: $*\e[0m" >&2
+}
+die() {
+  echo -e "\e[1;31mERROR: $*\e[0m" >&2
+  rm -rf "$WORKDIR"
+  exit 1
+}
+prompt() {
+  printf "\n\e[1;36m%s [y/N]:\e[0m " "$*"
+  read -r response
+  case "$(echo "$response" | tr '[:upper:]' '[:lower:]')" in
+    y|ye|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Configuration file and trusted keys path.
+# Will use the current directory if running from git.
+if test -e "$HERE"/.run-from-source-tree; then
+  not "Running $INV from source tree '$HERE'."
+  CONFIG="$HERE"/upgrade-massos.conf
+  TRUSTED="$HERE"/trusted-keys
+else
+  CONFIG="/etc/upgrade-massos/upgrade-massos.conf"
+  TRUSTED="/etc/upgrade-massos/trusted-keys"
+fi
+
+# Ensure we are running as root.
+if test $EUID -ne 0; then
+  die "$INV must be run as root (use 'sudo')."
+fi
+
+# Ensure we are running on a MassOS system.
+if test ! -r /usr/lib/massos-release || test ! -r /usr/share/massos/.distfiles; then
+  die "$INV requires MassOS experimental-20251105 or higher in order to run."
+fi
+
+# Get the MassOS version we are running on.
+OLD_VERSION="$(cat /usr/lib/massos-release)"
+
+# Get the MassOS variant we are running on.
+# Default to Xfce if it is not specified.
+if test -r /usr/share/massos/.variant; then
+  HOST_VARIANT="$(cat /usr/share/massos/.variant)"
+else
+  not "Guessing 'xfce' as the host system variant (not explicitly declared)."
+  HOST_VARIANT="xfce"
+fi
+
+# Essential utilities which must be installed on the system.
+if ! curl --version &>/dev/null; then
+  die "$INV requires the 'curl' utility to be installed."
+fi
+if ! yq --version &>/dev/null; then
+  die "$INV requires the 'yq' utility to be installed."
+fi
+if ! rnp --version &>/dev/null; then
+  die "$INV requires the 'rnp' utility to be installed."
+fi
+
+# Ensure the configuration file is accessible.
+if test ! -r "$CONFIG"; then
+  die "The $INV configuration file '$CONFIG' is not accessible."
+fi
+
+# Read configuration values from configuration file.
+SERVER="$(yq eval -r .server "$CONFIG")"
+CHANNEL="$(yq eval -r .channel "$CONFIG")"
+
+if test "$SERVER" = "null" || test "$CHANNEL" = "null"; then
+  die "The $INV configuration file '$CONFIG' is missing essential values."
+fi
+
+# If a local rootfs image was specified, use it.
+if test ! -z "$1"; then
+  ROOTFS="$(realpath "$1")"
+  msg "Trying to use local rootfs image '$ROOTFS' for upgrade..."
+  # Ensure the local rootfs file exists.
+  if test ! -r "$ROOTFS"; then
+    die "Local rootfs file '$ROOTFS' could not be accessed."
+  fi
+  # Verify that the rootfs file is valid.
+  if ! tar -tf "$ROOTFS" 2>/dev/null | grep -q '^usr/lib/massos-release$'; then
+    die "Local file '$ROOTFS' is not a valid MassOS rootfs image."
+  fi
+else
+  # Online mode.
+  msg "Checking for new MassOS updates from the server..."
+  if ! curl -fsL "$SERVER"/.upgrade-massos.yml -o "$WORKDIR"/server.yml; then
+    die "Failed to check the server ($SERVER) for available updates."
+  fi
+  if ! curl -fsL "$SERVER"/.upgrade-massos."$CHANNEL".yml -o "$WORKDIR"/channel.yml; then
+    die "The update server ($SERVER) does not support channel '$CHANNEL'."
+  fi
+  # Determine the version provided by the server.
+  NEW_VERSION="$(yq eval -r '.version' "$WORKDIR"/channel.yml)"
+  # Ensure the version is valid and differs from our host version.
+  if test "$NEW_VERSION" = "null"; then
+    die "The server ($SERVER) does not provide valid version information."
+  elif test "$NEW_VERSION" = "$OLD_VERSION"; then
+    msg "You are already running the latest version of MassOS ($NEW_VERSION)."
+    rm -rf "$WORKDIR"
+    exit 0
+  fi
+  # Check the server provides the variants needed.
+  UPDATE_VARIANTS=()
+  readarray -t UPDATE_VARIANTS < <(yq eval -r '.variants[]' "$WORKDIR"/channel.yml)
+  VARIANT_MATCH=0
+  for v in "${UPDATE_VARIANTS[@]}"; do
+    if test "$v" = "$HOST_VARIANT"; then
+      VARIANT_MATCH=1
+      break
+    fi
+  done
+  if test "$VARIANT_MATCH" != "1"; then
+    die "The latest version ($NEW_VERSION) is unsupported on '$HOST_VARIANT'."
+  fi
+  # Show update information and prompt to start the download.
+  msg "\nA new version of MassOS is available.\n"
+  msg "Current version: $OLD_VERSION"
+  msg "New version:     $NEW_VERSION"
+  if ! prompt "Do you want to proceed with the upgrade?"; then
+    die "The upgrade operation was cancelled by the user."
+  fi
+  # Get other information about how to download the upgrade file.
+  # We can assume defaults for these if unset.
+  CPOLICY="$(yq eval -r .checksum-policy "$WORKDIR"/server.yml)"
+  SPOLICY="$(yq eval -r .signature-policy "$WORKDIR"/server.yml)"
+  COMPRESSION="$(yq eval -r .compression "$WORKDIR"/channel.yml)"
+  CHECKSUM="$(yq eval -r .checksum "$WORKDIR"/channel.yml)"
+  SIGNATURE="$(yq eval -r .signature "$WORKDIR"/channel.yml)"
+  # If compression is unset, assume zst (this is subject to change).
+  if test "$COMPRESSION" = "null"; then
+    not "Server doesn't supply build compression information. Assuming zst."
+    COMPRESSION="zst"
+  fi
+  # Download main rootfs image.
+  ROOTFS="$WORKDIR"/rootfs
+  msg "Downloading upgrade image..."
+  if ! curl -#fL "$SERVER"/"$NEW_VERSION"/massos-"$NEW_VERSION"-rootfs-"$(uname -m)"-"$HOST_VARIANT".tar."$COMPRESSION" -o "$ROOTFS"; then
+    die "The upgrade image failed to download."
+  fi
+  # Download checksum and signature files, if applicable.
+  if test "$CHECKSUM" != "null"; then
+    msg "Downloading checksum file..."
+    # Download the checksum file.
+    if ! curl -#fL "$SERVER"/"$NEW_VERSION"/massos-"$NEW_VERSION"-rootfs-"$(uname -m)"-"$HOST_VARIANT".tar."$COMPRESSION"."$CHECKSUM" -o "$ROOTFS"."$CHECKSUM"; then
+      # Fail or don't fail depending on checksum policy.
+      if test "$CPOLICY" = "strict"; then
+        die "The checksum failed to download, but server policy requires it."
+      fi
+      not "The checksum failed to download, but server policy doesn't care."
+    else
+      # Verify the checksum.
+      msg "Verifying downloaded image against checksum file..."
+      if ! echo "$(cut -d' ' -f1 "$ROOTFS"."$CHECKSUM") $ROOTFS" | "$CHECKSUM"sum -c; then
+        msg "The downloaded image failed to be verified by its checksum."
+        if test "$CPOLICY" = "strict" || test "$CPOLICY" = "sloppy"; then
+          die "This is a fatal error due to the server's checksum policy."
+        else
+          not "The server's checksum policy doesn't care, so will continue."
+        fi
+      else
+        msg "Successfully verified downloaded image against checksum file!"
+      fi
+    fi
+  fi
+  if test "$SIGNATURE" != "null"; then
+    msg "Downloading signature file..."
+    # Download the signature file.
+    if ! curl -#fL "$SERVER"/"$NEW_VERSION"/massos-"$NEW_VERSION"-rootfs-"$(uname -m)"-"$HOST_VARIANT".tar."$COMPRESSION"."$SIGNATURE" -o "$ROOTFS"."$SIGNATURE"; then
+      # Fail or don't fail depending on signature policy.
+      if test "$SPOLICY" = "strict"; then
+        die "The signature failed to download, but server policy requires it."
+      fi
+      not "The signature failed to download, but server policy doesn't care."
+    else
+      # Verify the download against each trusted signature.
+      msg "Verifying downloaded image against signature file..."
+      VERIFIED=0
+      while read -r key; do
+        if rnp -f "$key" -v "$ROOTFS"."$SIGNATURE"; then
+          msg "Successfully verified downloaded image against signature file!"
+          VERIFIED=1
+          break
+        fi
+      done < <(find "$TRUSTED" -mindepth 1 -maxdepth 1 -type f -name \*.asc | sort)
+      # Decide what to do based on signature policy.
+      if test "$VERIFIED" = 0; then
+         msg "The downloaded image failed to be verified by any trusted key."
+        if test "$SPOLICY" = "strict" || test "$SPOLICY" = "sloppy"; then
+          die "This is a fatal error due to the server's signature policy."
+        else
+          not "The server's signature policy doesn't care, so will continue."
+        fi
+      fi
+    fi
+  fi
+fi
+# Extract additional metadata files from the rootfs.
+msg "Getting additional information from the upgrade image..."
+if ! tar -xf "$ROOTFS" -C "$WORKDIR" --strip-components=3 usr/share/massos/.distfiles; then
+  die "The image does not provide crucial distfiles data."
+fi
+if ! tar -xf "$ROOTFS" -C "$WORKDIR" --strip-components=1 tmp/{{pre,post}upgrade_ng,etc-force-replace,upgrade-exclude}; then
+  die "The image does not provide crucial pre/post-upgrade or exclude data."
+fi
+# Find stale files by comparing old and new distfiles data.
+grep -Fvx -f "$WORKDIR"/.distfiles /usr/share/massos/.distfiles > "$WORKDIR"/stale
+# Extract the rootfs image to working directory (only important files).
+# Do not extract patterns listed in upgrade-excludes file.
+msg "Extracting upgrade image..."
+mkdir -p "$WORKDIR"/newroot
+tar -xpf "$ROOTFS" -C "$WORKDIR"/newroot --exclude-from="$WORKDIR"/upgrade-exclude boot etc usr var
+# Run pre-upgrade script.
+msg "Running pre-upgrade script..."
+. "$WORKDIR"/preupgrade_ng
+# Pre-install new systemd-sysusers files - required for permissions.
+msg "Pre-installing new systemd-sysusers configuration files..."
+cp -af "$WORKDIR"/newroot/usr/lib/sysusers.d "$WORKDIR"/newroot/usr/lib
+systemd-sysusers
+# Install new directory structure (before installing files).
+msg "Installing new directory structure..."
+while read -r d; do
+  # Do nothing if the directory already exists on the host.
+  if test -d "$d"; then
+    continue
+  fi
+  # If the directory is a file, warn about it but continue.
+  if test -e "$d"; then
+    not "Overwriting file or symlink $d with a directory."
+    rm -f "$d"
+  fi
+  # Create directory.
+  mkdir -p "$d"
+  # Set permissions and ownership as required.
+  chmod "$(stat -c "%a" "$WORKDIR"/newroot/"$d")" "$d"
+  chown "$(stat -c "%u:%g" "$WORKDIR"/newroot/"$d")" "$d"
+done < <(find "$WORKDIR"/newroot -mindepth 1 -type d | sed "s|^$WORKDIR/newroot||" | sort)
+# Deal with file conflicts - if a new file or link would overwrite a directory.
+msg "Checking for and mitigating file conflicts..."
+while read -r f; do
+  if test -d "$f"; then
+    not "Overwriting directory $f with a file or symlink."
+    rm -rf "$f"
+  fi
+done < <(find "$WORKDIR"/newroot -mindepth 1 -type f,l | sed "s|^$WORKDIR/newroot||" | sort)
+# Pre-install new systemd-sysusers files, so chown will properly work.
+# Pre-install new Glibc libraries first, a crash can occur otherwise.
+msg "Pre-installing new Glibc libraries..."
+install -m755 "$WORKDIR"/newroot/usr/lib/{ld-linux-*,lib{anl,BrokenLocale,c,c_malloc_debug,dl,m,memusage,mvec,nsl,nss_{compat,db,dns,files,hesiod},pcprofile,pthread,resolv,rt,thread_db,util}}.so* /usr/lib
+# Install new /etc files by performing some checks for each.
+msg "Installing new /etc files..."
+while read -r f; do
+  # Decide if we need to install the file normally, as '.new', or not at all.
+  if test ! -e "$f" || grep -qx "$(echo "$f" | sed "s|^/etc/||")" "$WORKDIR"/etc-force-replace; then
+    # Install normally (file doesn't exist or is in etc-force-replace).
+    not "Installing new copy of $f (in force-replace list)."
+    cp -af "$WORKDIR"/newroot/"$f" "$f"
+  elif ! diff -q "$WORKDIR"/newroot/"$f" "$f" &>/dev/null; then
+    # Install with '.new' extension (the files are different).
+    not "Installing new copy of $f as $f.new (contents differ)."
+    cp -af "$WORKDIR"/newroot/"$f" "$f".new
+  fi
+done < <(find "$WORKDIR"/newroot/etc -mindepth 1 -type f,l | sed "s|^$WORKDIR/newroot||" | sort)
+# Install new data (non-ELF) files. For these we can use 'cp -af'.
+msg "Installing new data files..."
+cp -af "$WORKDIR"/newroot/var /
+cp -af "$WORKDIR"/newroot/usr/{include,local,share,src} /usr
+# Install new executable and library files. For these we must NOT use 'cp -af'.
+msg "Installing new binaries and libraries..."
+while read -r f; do
+  # Install it carefully while preserving permissions.
+  install -o"$(stat -c "%u" "$WORKDIR"/newroot/"$f")" -g"$(stat -c "%g" "$WORKDIR"/newroot/"$f")" -m"$(stat -c "%a" "$WORKDIR"/newroot/"$f")" "$WORKDIR"/newroot/"$f" "$f"
+done < <(find "$WORKDIR"/newroot/usr/{bin,lib,libexec} -mindepth 1 -type f | sed "s|^$WORKDIR/newroot||" | sort)
+# Now update the symlinks for the installed binaries and libraries.
+msg "Installing new binary and library symlinks..."
+while read -r l; do
+  # Copy the symlink.
+  cp -af "$WORKDIR"/newroot/"$l" "$l"
+done < <(find "$WORKDIR"/newroot/usr/{bin,lib,libexec} -mindepth 1 -type l | sed "s|^$WORKDIR/newroot||" | sort)
+# Perform stale file cleanup.
+msg "Cleaning up stale files..."
+while read -r f; do
+  rm -f "$f"
+done < <(grep -E '^f:|^l:' "$WORKDIR"/stale | sed -e 's/^f://' -e 's/^l://' | sed '\/var\/lib\/flatpak/d' | sort)
+# Perform stale directory cleanup.
+msg "Cleaning up stale directories..."
+while read -r d; do
+  # Only clean up the directory if it is not empty.
+  rmdir "$d" 2>/dev/null || true
+done
+# Run post-upgrade script.
+msg "Running post-upgrade script..."
+sync; . "$WORKDIR"/postupgrade_ng
+# Regenerate locales.
+msg "Regenerating locales..."
+mklocales
+# Generate an updated initramfs.
+msg "Generating an updated initramfs..."
+mkinitramfs "$(cat /usr/share/massos/.krel)"
+# Update the GRUB bootloader configuration.
+msg "Updating the GRUB bootloader configuration..."
+grub-mkconfig -o /boot/grub/grub.cfg
+# Clean up update cache.
+msg "Cleaning up update cache..."
+sync; rm -rf "$WORKDIR"
+# Prompt to restart the system.
+if prompt "The upgrade succeeded. Your system will reboot. Is this OK?"; then
+  shutdown -r now
+else
+  die "Automatic reboot cancelled. Please manually reboot as soon as possible."
+fi

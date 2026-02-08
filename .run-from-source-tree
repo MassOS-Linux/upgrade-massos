@@ -1,0 +1,12 @@
+If this file exists in the current directory, then 'upgrade-massos' will access
+its configuration file and trusted keys list ONLY from the current working
+directory (e.g. git checkout source tree), and will disregard all locations on
+the system where such files could be installed instead. This is designed for
+the developers of MassOS to be able to easily test the software. It can also be
+used in situations where you want to upgrade from a version of MassOS which IS
+new enough to be supported by this utility, but is NOT new enough to have this
+utility pre-installed.
+
+The contents of this file (if any) have no impact on its functionality. You can
+safely replace or delete this text if desired. However deleting the entire file
+will prevent 'upgrade-massos' from running from the git source tree.
