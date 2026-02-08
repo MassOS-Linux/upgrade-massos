@@ -287,7 +287,7 @@ while read -r f; do
 done < <(find "$WORKDIR"/newroot/etc -mindepth 1 -type f,l | sed "s|^$WORKDIR/newroot||" | sort)
 # Install new data (non-ELF) files. For these we can use 'cp -af'.
 msg "Installing new data files..."
-cp -af "$WORKDIR"/newroot/var /
+cp -af "$WORKDIR"/newroot/{boot,var} /
 cp -af "$WORKDIR"/newroot/usr/{include,local,share,src} /usr
 # Install new executable and library files. For these we must NOT use 'cp -af'.
 msg "Installing new binaries and libraries..."
