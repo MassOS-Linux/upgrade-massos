@@ -77,9 +77,112 @@ manually restart your system as soon as is convenient for you to do so.
 # Configuration
 You can configure the utility by editing the file
 `/etc/upgrade-massos/upgrade-massos.conf` (or simply `upgrade-massos.conf` if
-you are running directly from the git source tree checkout).
+you are running directly from the git source tree checkout). Comments in the
+file describe the purpose of each option.
 
-TBC
+The upgrade channel can be specified via the `channel:` option. The available
+channels will vary depending on the server, but the official MassOS upgrade
+server will offer the following channels:
+
+- `experimental` - Experimental builds of MassOS. During MassOS's experimental
+  phase, this is the only channel currently available. After MassOS returns to
+  regular releases, this channel will contain preview and testing builds.
+- `stable` - Stable release builds of MassOS. This channel is not currently
+  supported. After MassOS returns to normal releases and exits its experimental
+  phase, this channel will be used for standard release upgrades, and will
+  therefore be the recommended channel for most users. Stable releases will be
+  well-tested and production ready, while unstable builds may encounter bugs
+  or stability issues.
 
 # Server
-TBC
+This section will describe the server structure expected by `upgrade-massos`.
+It is only useful for individuals who wish to host their own upgrade server
+(for example, in order to serve custom/unofficial MassOS builds).
+
+This example layout is going to assume a server hosted at
+`https://example.org/massos-bulds`. The subdirectory used to store builds can
+be anything you wish, in this example it is `massos-builds`.
+```
+massos-builds/
+├── .upgrade-massos.yml
+├── .upgrade-massos.CHANNELNAME1.yml
+├── .upgrade-massos.CHANNELNAME2.yml
+├── VERSIONCODE1
+│   ├── massos-VERSIONCODE1-rootfs-x86_64-VARIANT.tar.zst
+│   ├── massos-VERSIONCODE1-rootfs-x86_64-VARIANT.tar.zst.asc
+│   └── massos-VERSIONCODE1-rootfs-x86_64-VARIANT.tar.zst.b2
+└── VERSIONCODE2
+    ├── massos-VERSIONCODE2-rootfs-x86_64-VARIANT.tar.zst
+    ├── massos-VERSIONCODE2-rootfs-x86_64-VARIANT.tar.zst.asc
+    └── massos-VERSIONCODE2-rootfs-x86_64-VARIANT.tar.zst.b2
+```
+
+The file `.upgrade-massos.yml` is the main server configuration information. It
+identifies the server as a valid MassOS upgrade server, and dictates the
+server's checksum/signature policies. It is structured as follows:
+```
+format: 1
+checksum-policy: POLICY
+signature-policy: POLICY
+```
+For `checksum-policy` and `signature-policy`, the following options in place of
+`POLICY` are supported:
+
+- `strict` - All builds must contain a valid checksum/signature, which must be
+  validated by the client when performing an online update. If any build is
+  missing the checksum/signature, or if the validation fails for any reason,
+  the upgrade will NOT proceed.
+- `sloppy` - If a build contains a valid checksum/signature, it/they will be
+  validated by the client when performing an online update. If the validation
+  fails for any reason, the upgrade will NOT proceed. If the checksum/signature
+  file does NOT exist on the server, the upgrade WILL proceed anyway (skipping
+  validation). This option is not recommended other than for testing purposes.
+- `none` - No checksum/signature validation will be performed at all. This
+  option is not recommended under any circumstance, and is subject to removal
+  or deprecation in future updates to `upgrade-massos`.
+
+
+Files named `.upgrade-massos.CHANNELNAME.yml` must exist for every channel that
+the server supports. For example, `.upgrade-massos.experimental.yml` and
+`.upgrade-massos.stable.yml`. You can choose whichever channel name(s) you wish
+to use, but we recommend clearly documenting to users of your upgrade server
+which channels are supported. The client must set the channel they wish to use
+in their `upgrade-massos.conf` file. The channel file is structured as follows:
+```
+format: 1
+version: LATESTVERSION
+variants: [VARIANT1, VARIANT2]
+compression: COMPRESSIONALGORITHM
+checksum: CHECKSUMALGORITHM
+signature: SIGNATUREFORMAT
+```
+
+Set (and update) `version` to the latest available version in this channel. It
+is the version that the client will download and install when performing an
+online update.
+
+`variants` must contain an array of MassOS build variants supported by the
+version. If there is only one supported, enter (e.g.) `[xfce]`. If multiple are
+supported, write them as (e.g.) `[xfce, kde, gnome]`.
+
+`compression` indicates the compression algorithm used by the build. It should
+match the file extension after `.tar.`, e.g., `zst` (modern default for MassOS)
+or `xz` (older builds or niche situations).
+
+`checksum` indicates the file extension of the checksum file (and hence, the
+checksum algorithm used). For example, `b2` indicates a Blake-2 checksum is
+used, `sha256` indicates a SHA-256 checksum is used, and so on.
+
+`signature` indicates the file extension of the build's detached GPG signature.
+In most cases it will be `asc`, assuming the signature was produced using a
+command such as `gpg --detach-sign --armor`.
+
+Finally, the builds for each version should exist in subdirectories of the
+version's code. For example, `experimental-20260208`.
+
+At your own discretion, you can choose whether or not to (a) delete older
+builds from your server after newer ones are made available, and (b) provide
+ISO images alongside the rootfs tarballs. Both of these are unnecessary for
+`upgrade-massos`, but may be useful if your server has a web interface for its
+filesystem, and if your users may want to directly download builds from the
+same server, rather than downloading them from a different source.
