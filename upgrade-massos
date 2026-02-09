@@ -311,7 +311,7 @@ msg "Cleaning up stale directories..."
 while read -r d; do
   # Only clean up the directory if it is not empty.
   rmdir "$d" 2>/dev/null || true
-done < <(grep '^d:' "$WORKDIR"/stale | sed 's/^d://' | sort)
+done < <(grep '^d:' "$WORKDIR"/stale | sed 's/^d://' | sort -r)
 # Run post-upgrade script.
 msg "Running post-upgrade script..."
 sync; . "$WORKDIR"/postupgrade_ng
