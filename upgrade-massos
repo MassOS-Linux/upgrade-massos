@@ -53,7 +53,7 @@ if test $EUID -ne 0; then
 fi
 
 # Ensure we are running on a MassOS system.
-if test ! -r /usr/lib/massos-release || test ! -r /usr/share/massos/.distfiles; then
+if test ! -r /usr/lib/massos-release || test ! -r /usr/share/massos/.distfiles || test ! -r /usr/share/massos/.krel; then
   die "$INV requires MassOS experimental-20251105 or higher in order to run."
 fi
 
@@ -221,7 +221,7 @@ else
 fi
 # Extract additional metadata files from the rootfs.
 msg "Getting additional information from the upgrade image..."
-if ! tar -xf "$ROOTFS" -C "$WORKDIR" --strip-components=3 usr/share/massos/.distfiles; then
+if ! tar -xf "$ROOTFS" -C "$WORKDIR" --strip-components=3 usr/share/massos/.{distfiles,krel}; then
   die "The image does not provide crucial distfiles data."
 fi
 if ! tar -xf "$ROOTFS" -C "$WORKDIR" --strip-components=1 tmp/{{pre,post}upgrade_ng,etc-force-replace,upgrade-exclude}; then
@@ -229,6 +229,12 @@ if ! tar -xf "$ROOTFS" -C "$WORKDIR" --strip-components=1 tmp/{{pre,post}upgrade
 fi
 # Find stale files by comparing old and new distfiles data.
 grep -Fvx -f "$WORKDIR"/.distfiles /usr/share/massos/.distfiles > "$WORKDIR"/stale
+# If the kernel version differs, mark that we should cleanup initramfs.
+# This is needed because initramfs is not included in stale file list.
+if grep -q "^f:/boot/vmlinuz" "$WORKDIR"/stale; then
+  not "Upgrade has a newer kernel, adding old initramfs to stale file list."
+  echo "f:/boot/initramfs-$(cat /usr/share/massos/.krel).img" >> "$WORKDIR"/stale
+fi
 # Extract the rootfs image to working directory (only important files).
 # Do not extract patterns listed in upgrade-excludes file.
 msg "Extracting upgrade image..."
