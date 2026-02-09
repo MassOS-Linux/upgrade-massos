@@ -228,7 +228,8 @@ if ! tar -xf "$ROOTFS" -C "$WORKDIR" --strip-components=1 tmp/{{pre,post}upgrade
   die "The image does not provide crucial pre/post-upgrade or exclude data."
 fi
 # Find stale files by comparing old and new distfiles data.
-grep -Fvx -f "$WORKDIR"/.distfiles /usr/share/massos/.distfiles > "$WORKDIR"/stale
+# AWK is used to ensure f:example matches with d:example (rare but possible).
+awk 'FNR==NR { seen[substr($0, 3)]++; next } ! (substr($0, 3) in seen)' "$WORKDIR"/.distfiles /usr/share/massos/.distfiles > "$WORKDIR"/stale
 # If the kernel version differs, mark that we should cleanup initramfs.
 # This is needed because initramfs is not included in stale file list.
 if grep -q "^f:/boot/vmlinuz" "$WORKDIR"/stale; then
