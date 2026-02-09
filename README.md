@@ -100,7 +100,7 @@ It is only useful for individuals who wish to host their own upgrade server
 (for example, in order to serve custom/unofficial MassOS builds).
 
 This example layout is going to assume a server hosted at
-`https://example.org/massos-bulds`. The subdirectory used to store builds can
+`https://example.org/massos-builds`. The subdirectory used to store builds can
 be anything you wish, in this example it is `massos-builds`.
 ```
 massos-builds/
@@ -186,3 +186,9 @@ ISO images alongside the rootfs tarballs. Both of these are unnecessary for
 `upgrade-massos`, but may be useful if your server has a web interface for its
 filesystem, and if your users may want to directly download builds from the
 same server, rather than downloading them from a different source.
+
+If you want to see an example server layout for reference, you may visit the
+[official MassOS upgrade server](https://archive.massos.org/massos-builds/).
+The official MassOS upgrade server's configuration files can be found
+[here](https://archive.massos.org/massos-builds/.upgrade-massos.yml), and
+[here](https://archive.massos.org/massos-builds/.upgrade-massos.experimental.yml).
