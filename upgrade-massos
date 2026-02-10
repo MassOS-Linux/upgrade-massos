@@ -19,6 +19,11 @@ export LANG="C.UTF-8" LANGUAGE="C.UTF-8" LC_ALL="C.UTF-8"
 msg() {
   echo -e "\e[1;33m$*\e[0m"
 }
+msgr() {
+  # Message with a carriage return and no trailing newline.
+  # Use to give progress indicators or the like.
+  printf "\r\e[1;33m%s\e[0m" "$*"
+}
 not() {
   echo -e "\e[1;35mNOTE: $*\e[0m" >&2
 }
@@ -297,11 +302,21 @@ msg "Installing new data files..."
 cp -af "$WORKDIR"/newroot/{boot,var} /
 cp -af "$WORKDIR"/newroot/usr/{include,local,share,src} /usr
 # Install new executable and library files. For these we must NOT use 'cp -af'.
-msg "Installing new binaries and libraries..."
+# This takes a long time, so try to give progress indicators here and there.
+bincount="$(find "$WORKDIR"/newroot/usr/{bin,lib,libexec} -mindepth 1 -type f | sed "s|^$WORKDIR/newroot||" | sort | wc -l)"
+bindone=0
+percent=0
+msgr "Installing new binaries and libraries (0% done)..."
 while read -r f; do
   # Install it carefully while preserving permissions.
   install -o"$(stat -c "%u" "$WORKDIR"/newroot/"$f")" -g"$(stat -c "%g" "$WORKDIR"/newroot/"$f")" -m"$(stat -c "%a" "$WORKDIR"/newroot/"$f")" "$WORKDIR"/newroot/"$f" "$f"
+  # Update progress with number of files done.
+  bindone="$((bindone + 1))"
+  percent="$(( (bindone * 100 + bincount / 2) / bincount ))"
+  msgr "Installing new binaries and libraries ($percent% done)..."
 done < <(find "$WORKDIR"/newroot/usr/{bin,lib,libexec} -mindepth 1 -type f | sed "s|^$WORKDIR/newroot||" | sort)
+# End the madness of fake progress bar and carriage return usage.
+msg "\rInstalling new binaries and libraries (100% done)..."
 # Now update the symlinks for the installed binaries and libraries.
 msg "Installing new binary and library symlinks..."
 while read -r l; do
