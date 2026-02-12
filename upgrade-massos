@@ -108,6 +108,9 @@ if test ! -z "$1"; then
   fi
   # Verify that the rootfs file is valid.
   if ! tar -tf "$ROOTFS" 2>/dev/null | grep -q '^usr/lib/massos-release$'; then
+    if echo "$ROOTFS" | grep -iq '.iso$'; then
+      not "ISO images are not supported. Please use a rootfs image (.tar.zst)."
+    fi
     die "Local file '$ROOTFS' is not a valid MassOS rootfs image."
   fi
 else
@@ -332,7 +335,7 @@ done < <(grep -E '^f:|^l:' "$WORKDIR"/stale | sed -e 's/^f://' -e 's/^l://' | se
 msg "Cleaning up stale directories..."
 while read -r d; do
   # Only clean up the directory if it is not empty.
-  rmdir "$d" 2>/dev/null || true
+  rmdir "$d" 2>/dev/null || not "Not removing directory $d as it is not empty."
 done < <(grep '^d:' "$WORKDIR"/stale | sed 's/^d://' | sort -r)
 # Run post-upgrade script.
 msg "Running post-upgrade script..."
