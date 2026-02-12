@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
 # upgrade-massos - Modern system upgrade utility for MassOS.
-# Copyright (C) 2025 Daniel Massey - Licensed under GNU GPLv3+.
+# Copyright (C) 2026 Daniel Massey - Licensed under GNU GPLv3+.
 # See the 'LICENSE' file, or '/usr/share/massos/LICENSE' on a MassOS system.
+
+# shellcheck disable=SC1091
 
 # Invocation, binary location, version and copyright year.
 INV="$(basename "$0")"
@@ -290,9 +292,9 @@ install -m755 "$WORKDIR"/newroot/usr/lib/{ld-linux-*,lib{anl,BrokenLocale,c,c_ma
 msg "Installing new /etc files..."
 while read -r f; do
   # Decide if we need to install the file normally, as '.new', or not at all.
-  if test ! -e "$f" || grep -qx "$(echo "$f" | sed "s|^/etc/||")" "$WORKDIR"/etc-force-replace; then
+  if test ! -e "$f" || grep -qx "${f/#\/etc\//}" "$WORKDIR"/etc-force-replace; then
     # Install normally (file doesn't exist or is in etc-force-replace).
-    not "Installing new copy of $f (in force-replace list)."
+    not "Overwriting $f with new copy (in force-replace list or non-existent)."
     cp -af "$WORKDIR"/newroot/"$f" "$f"
   elif ! diff -q "$WORKDIR"/newroot/"$f" "$f" &>/dev/null; then
     # Install with '.new' extension (the files are different).
