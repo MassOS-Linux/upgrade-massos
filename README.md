@@ -37,6 +37,7 @@ sudo upgrade-massos
 
 ```sh
 # To install an update offline, from a local rootfs image:
+# Note that the rootfs image (.tar.*) must be used; ISO images are unsupported:
 sudo upgrade-massos <rootfs-file>.tar.zst
 ```
 
@@ -57,6 +58,7 @@ sudo ./upgrade-massos
 
 ```sh
 # To install an update offline, from a local rootfs image:
+# Note that the rootfs image (.tar.*) must be used; ISO images are unsupported:
 sudo ./upgrade-massos <rootfs-file>.tar.zst
 ```
 
@@ -180,9 +182,9 @@ command such as `gpg --detach-sign --armor`.
 Finally, the builds for each version should exist in subdirectories of the
 version's code. For example, `experimental-20260208`.
 
-At your own discretion, you can choose whether or not to (a) delete older
-builds from your server after newer ones are made available, and (b) provide
-ISO images alongside the rootfs tarballs. Both of these are unnecessary for
+At your own discretion, you can choose whether or not to (a) retain older
+builds on your server after newer ones are made available, and (b) provide ISO
+images alongside the rootfs tarballs. Both of these are unnecessary for
 `upgrade-massos`, but may be useful if your server has a web interface for its
 filesystem, and if your users may want to directly download builds from the
 same server, rather than downloading them from a different source.
