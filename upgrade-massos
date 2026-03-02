@@ -6,9 +6,10 @@
 
 # shellcheck disable=SC1091
 
-# Invocation, binary location, version and copyright year.
+# Invocation, binary location and version.
 INV="$(basename "$0")"
 HERE="$(readlink -f "$(dirname "$0")")"
+VER="0.1.0"
 
 # Temporary working directory.
 WORKDIR="$(mktemp -d /var/tmp/upgrade-massos.tmp.XXXXXX)"
@@ -46,7 +47,7 @@ prompt() {
 # Configuration file and trusted keys path.
 # Will use the current directory if running from git.
 if test -e "$HERE"/.run-from-source-tree; then
-  not "Running $INV from source tree '$HERE'."
+  not "Running $INV $VER from source tree '$HERE'."
   CONFIG="$HERE"/upgrade-massos.conf
   TRUSTED="$HERE"/trusted-keys
 else
