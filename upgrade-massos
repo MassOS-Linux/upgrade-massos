@@ -9,7 +9,7 @@
 # Invocation, binary location and version.
 INV="$(basename "$0")"
 HERE="$(readlink -f "$(dirname "$0")")"
-VER="0.1.0"
+VER="0.2.0"
 
 # Temporary working directory.
 WORKDIR="$(mktemp -d /var/tmp/upgrade-massos.tmp.XXXXXX)"
@@ -50,9 +50,11 @@ if test -e "$HERE"/.run-from-source-tree; then
   not "Running $INV $VER from source tree '$HERE'."
   CONFIG="$HERE"/upgrade-massos.conf
   TRUSTED="$HERE"/trusted-keys
+  UGMH="$HERE"/ugm-install-helper
 else
   CONFIG="/etc/upgrade-massos/upgrade-massos.conf"
   TRUSTED="/etc/upgrade-massos/trusted-keys"
+  UGMH="/usr/libexec/upgrade-massos/ugm-install-helper"
 fi
 
 # Ensure we are running as root.
@@ -91,6 +93,15 @@ fi
 # Ensure the configuration file is accessible.
 if test ! -r "$CONFIG"; then
   die "The $INV configuration file '$CONFIG' is not accessible."
+fi
+
+# Ensure ugm-install-helper is accessible.
+if test ! -x "$UGMH"; then
+  if test -e "$HERE"/.run-from-source-tree; then
+    die "Missing ugm-install-helper. Run './compile-ugmh.sh', then retry $INV."
+  else
+    die "Missing ugm-install-helper. Your installation of $INV is corrupted."
+  fi
 fi
 
 # Read configuration values from configuration file.
@@ -307,28 +318,15 @@ done < <(find "$WORKDIR"/newroot/etc -mindepth 1 -type f,l | sed "s|^$WORKDIR/ne
 msg "Installing new data files..."
 cp -af "$WORKDIR"/newroot/{boot,var} /
 cp -af "$WORKDIR"/newroot/usr/{include,local,share,src} /usr
-# Install new executable and library files. For these we must NOT use 'cp -af'.
-# This takes a long time, so try to give progress indicators here and there.
-bincount="$(find "$WORKDIR"/newroot/usr/{bin,lib,libexec} -mindepth 1 -type f | sed "s|^$WORKDIR/newroot||" | sort | wc -l)"
-bindone=0
-percent=0
-msgr "Installing new binaries and libraries (0% done)..."
-while read -r f; do
-  # Install it carefully while preserving permissions.
-  install -o"$(stat -c "%u" "$WORKDIR"/newroot/"$f")" -g"$(stat -c "%g" "$WORKDIR"/newroot/"$f")" -m"$(stat -c "%a" "$WORKDIR"/newroot/"$f")" "$WORKDIR"/newroot/"$f" "$f"
-  # Update progress with number of files done.
-  bindone="$((bindone + 1))"
-  percent="$(( (bindone * 100 + bincount / 2) / bincount ))"
-  msgr "Installing new binaries and libraries ($percent% done)..."
-done < <(find "$WORKDIR"/newroot/usr/{bin,lib,libexec} -mindepth 1 -type f | sed "s|^$WORKDIR/newroot||" | sort)
-# End the madness of fake progress bar and carriage return usage.
-msg "\rInstalling new binaries and libraries (100% done)..."
-# Now update the symlinks for the installed binaries and libraries.
-msg "Installing new binary and library symlinks..."
-while read -r l; do
-  # Copy the symlink.
-  cp -af "$WORKDIR"/newroot/"$l" "$l"
-done < <(find "$WORKDIR"/newroot/usr/{bin,lib,libexec} -mindepth 1 -type l | sed "s|^$WORKDIR/newroot||" | sort)
+# Install new executable and library files using ugm-install-helper.
+# This is much faster than our previous manual iteration method.
+# It also automatically adds a progress bar, and makes use of parallelism.
+msg "Installing new libraries..."
+"$UGMH" "$WORKDIR"/newroot/usr/lib /usr
+msg "Installing new library executables..."
+"$UGMH" "$WORKDIR"/newroot/usr/libexec /usr
+msg "Installing new binaries..."
+"$UGMH" "$WORKDIR"/newroot/usr/bin /usr
 # Perform stale file cleanup.
 msg "Cleaning up stale files..."
 while read -r f; do

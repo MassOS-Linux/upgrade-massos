@@ -48,6 +48,8 @@ and run it from the git source tree with the following commands:
 # Download the utility and change to its directory:
 git clone https://github.com/MassOS-Linux/upgrade-massos
 cd upgrade-massos
+# Compile ugm-install-helper (mandatory as of 0.2.0+):
+./compile-ugmh.sh
 ```
 
 And then run the utility as follows:
@@ -194,3 +196,11 @@ If you want to see an example server layout for reference, you may visit the
 The official MassOS upgrade server's configuration files can be found
 [here](https://archive.massos.org/massos-builds/.upgrade-massos.yml), and
 [here](https://archive.massos.org/massos-builds/.upgrade-massos.experimental.yml).
+
+# Contribution
+
+- `upgrade-massos` strictly makes use of a 2-space-indentation style. Please
+  respect it when modifying this component for pull requests.
+- `ugm-install-helper.go` strictly makes use of a tab-identation style, as
+  is the recommended default by `gofmt`. Please respect it when modifying this
+  component for pull requests.
