@@ -9,7 +9,7 @@
 # Invocation, binary location and version.
 INV="$(basename "$0")"
 HERE="$(readlink -f "$(dirname "$0")")"
-VER="0.2.0"
+VER="0.2.1"
 
 # Temporary working directory.
 WORKDIR="$(mktemp -d /var/tmp/upgrade-massos.tmp.XXXXXX)"
@@ -52,6 +52,7 @@ if test -e "$HERE"/.run-from-source-tree; then
   TRUSTED="$HERE"/trusted-keys
   UGMH="$HERE"/ugm-install-helper
 else
+  not "Running $INV $VER (system-installed)."
   CONFIG="/etc/upgrade-massos/upgrade-massos.conf"
   TRUSTED="/etc/upgrade-massos/trusted-keys"
   UGMH="/usr/libexec/upgrade-massos/ugm-install-helper"
@@ -344,6 +345,9 @@ sync; . "$WORKDIR"/postupgrade_ng
 # Regenerate locales.
 msg "Regenerating locales..."
 mklocales
+# Rebuild DKMS modules, if any.
+msg "Rebuilding DKMS modules for the new kernel..."
+dkms autoinstall -k "$(cat /usr/share/massos/.krel)"
 # Generate an updated initramfs.
 msg "Generating an updated initramfs..."
 mkinitramfs "$(cat /usr/share/massos/.krel)"
