@@ -84,6 +84,16 @@ You can configure the utility by editing the file
 you are running directly from the git source tree checkout). Comments in the
 file describe the purpose of each option.
 
+Note that, in the case of the official MassOS upgrade server, the URL differs
+based on architecture (`x86_64` should be replaced by `aarch64` for aarch64
+systems). This was a design choice made because not all versions of MassOS
+currently have a respective aarch64 build, even if there is an x86_64 one. This
+may not be the case for all servers, if multiarch builds are placed in the same
+directory (which is possible as they don't conflict). Nonetheless, the upgrade
+utility will explicitly try to download the architecture-specific build, for
+whichever architecture system it is running on. It will fail if it can't find
+such file on the server.
+
 The upgrade channel can be specified via the `channel:` option. The available
 channels will vary depending on the server, but the official MassOS upgrade
 server will offer the following channels:
