@@ -11,9 +11,17 @@ if go version &>/dev/null; then
   GO_BINARY=go
 else
   echo "Going to download a temporary copy of Go."
+  gover=1.27.0
+  case "$(uname -m)" in
+    x86_64) goarch=amd64 gosum=675c26c449cbb18fc24b74650de1eabbae6e16f64326fd85a283fb3b58280685 ;;
+    aarch64) goarch=arm64 gosum=51798d2c42d0e1c6ed7fd9f48728b4193abac9e8aad6dbac2fe96a81f5909bda ;;
+    i?86) goarch=386 gosum=eac4abaca4113170a1cf261b8bf1d38480e61e99deecbc6a14767deb8b19e8ad ;;
+    armv*) goarch=armv6l gosum=e337ecd9c321377c0d8832690c2cb10463447c0bd0e65e2e3413dfff63a3435b ;;
+    *) echo "Error: System-installed Go needed for $(uname -m)." >&2; exit 1 ;;
+  esac
   gotmp="$(mktemp -d /tmp/.ugmh.XXXXXX)"
-  curl -fL https://dl.google.com/go/go1.26.0.linux-amd64.tar.gz -o "$gotmp/go.tar.gz"
-  echo "aac1b08a0fb0c4e0a7c1555beb7b59180b05dfc5a3d62e40e9de90cd42f88235 $gotmp/go.tar.gz" | sha256sum -c
+  curl -fL "https://dl.google.com/go/go$gover.linux-$goarch.tar.gz" -o "$gotmp/go.tar.gz"
+  echo "$gosum $gotmp/go.tar.gz" | sha256sum -c
   tar -xf "$gotmp/go.tar.gz" -C "$gotmp"
   GO_BINARY="$gotmp/go/bin/go"
 fi
