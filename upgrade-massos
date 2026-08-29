@@ -9,7 +9,7 @@
 # Invocation, binary location and version.
 INV="$(basename "$0")"
 HERE="$(readlink -f "$(dirname "$0")")"
-VER="0.2.1"
+VER="0.2.3"
 
 # Temporary working directory.
 WORKDIR="$(mktemp -d /var/tmp/upgrade-massos.tmp.XXXXXX)"
