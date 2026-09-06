@@ -9,7 +9,7 @@
 # Invocation, binary location and version.
 INV="$(basename "$0")"
 HERE="$(readlink -f "$(dirname "$0")")"
-VER="0.2.3"
+VER="0.3.0"
 
 # Temporary working directory.
 WORKDIR="$(mktemp -d /var/tmp/upgrade-massos.tmp.XXXXXX)"
@@ -328,6 +328,23 @@ msg "Installing new library executables..."
 "$UGMH" "$WORKDIR"/newroot/usr/libexec /usr
 msg "Installing new binaries..."
 "$UGMH" "$WORKDIR"/newroot/usr/bin /usr
+# Perform file ownership correction if rootfs includes a 'nonrootfiles'.
+# This is only default on MassOS >= 2026.10 so not fatal if not found.
+if test -r "$WORKDIR"/newroot/usr/share/massos/.nonrootfiles; then
+  msg "Correcting system file ownerships..."
+  while read -r l; do
+    # Lines are formatted as 'owner:group:file'.
+    # First two columns can be combined in the 'chown' command.
+    f="$(echo "$l" | cut -d: -f3-)"
+    m="$(echo "$l" | cut -d: -f1-2)"
+    # Only change ownership if file exists (avoids random runtime warnings).
+    if test -e "$f"; then
+      chown "$m" "$f"
+    fi
+  done < "$WORKDIR"/newroot/usr/share/massos/.nonrootfiles
+else
+  not "Not correcting system file ownerships (unsupported by upgrade image)."
+fi
 # Perform stale file cleanup.
 msg "Cleaning up stale files..."
 while read -r f; do
